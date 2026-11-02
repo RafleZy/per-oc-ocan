@@ -28,10 +28,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Move index.html to www folder
+      - name: Accept Android SDK licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Prepare www folder
         run: |
           mkdir -p www
           cp index.html www/index.html
@@ -40,9 +44,11 @@ jobs:
         run: |
           npm install
 
-      - name: Add Capacitor Android platform
+      - name: Add Capacitor Android platform (if not exists)
         run: |
-          npx cap add android
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
 
       - name: Sync Capacitor project
         run: |
@@ -51,12 +57,12 @@ jobs:
       - name: Build Debug APK with Gradle
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: OC-Editor-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

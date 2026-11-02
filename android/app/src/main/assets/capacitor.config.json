@@ -1,0 +1,6 @@
+{
+	"appId": "com.akumau.oc",
+	"appName": "OC Editor",
+	"webDir": "www",
+	"bundledWebRuntime": false
+}
