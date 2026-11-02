@@ -1,6 +1,110 @@
 <!doctype html>
 <html lang="id">
 <head>
+<script>
+/**
+ * Capacitor & Android WebView Download Handler Patch
+ * Enables saving and sharing files in Android WebView and Capacitor environments
+ * Supports @capacitor/filesystem and @capacitor/share
+ */
+(function() {
+  window.saveBlobViaCapacitor = async function(blob, filename, mimeType) {
+    mimeType = mimeType || blob.type || "application/octet-stream";
+    console.log("[OC-Editor] Saving file:", filename, mimeType);
+
+    // 1. Check for Capacitor Plugins
+    if (window.Capacitor && window.Capacitor.Plugins) {
+      try {
+        const { Filesystem, Share } = window.Capacitor.Plugins;
+        if (Filesystem) {
+          const reader = new FileReader();
+          const base64Data = await new Promise((resolve, reject) => {
+            reader.onloadend = () => {
+              const res = reader.result;
+              resolve(res.split(",")[1] || res);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+
+          const fileResult = await Filesystem.writeFile({
+            path: filename,
+            data: base64Data,
+            directory: "CACHE"
+          });
+
+          if (Share) {
+            await Share.share({
+              title: filename,
+              text: "File " + filename + " berhasil dibuat.",
+              url: fileResult.uri,
+              dialogTitle: "Simpan / Bagikan " + filename
+            });
+            return true;
+          }
+        }
+      } catch (err) {
+        console.warn("[Capacitor save/share error, trying fallback]", err);
+      }
+    }
+
+    // 2. Check for native AndroidBridge JavascriptInterface
+    if (window.AndroidBridge && typeof window.AndroidBridge.saveBlob === "function") {
+      try {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Data = (reader.result || "").split(",")[1] || "";
+          window.AndroidBridge.saveBlob(base64Data, filename, mimeType);
+        };
+        reader.readAsDataURL(blob);
+        return true;
+      } catch (err) {
+        console.warn("[AndroidBridge save error]", err);
+      }
+    }
+
+    // 3. Fallback to standard browser download
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+      }, 4000);
+      return true;
+    } catch (err) {
+      console.error("[Download fallback error]", err);
+      alert("Gagal mendownload: " + (err.message || err));
+      return false;
+    }
+  };
+
+  // Intercept standard <a download> clicks across document and Shadow DOMs
+  document.addEventListener("click", function(e) {
+    const path = e.composedPath ? e.composedPath() : [];
+    const a = path.find(el => el.tagName === "A" && el.hasAttribute("download")) || (e.target && e.target.closest ? e.target.closest("a[download]") : null);
+    if (!a || !a.href) return;
+
+    if (window.Capacitor || window.AndroidBridge) {
+      if (a.href.startsWith("blob:")) {
+        e.preventDefault();
+        e.stopPropagation();
+        fetch(a.href)
+          .then(r => r.blob())
+          .then(blob => window.saveBlobViaCapacitor(blob, a.download || "download.bin", blob.type))
+          .catch(err => {
+            console.error("Fetch blob failed, continuing click:", err);
+          });
+      }
+    }
+  }, true);
+})();
+</script>
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
@@ -1240,10 +1344,10 @@ $('#chips').addEventListener('click',ev=>{
 
 function present(name,bytes,mime){
   if(state.url)URL.revokeObjectURL(state.url);
-  const blob=new Blob([bytes],{type:mime});state.url=URL.createObjectURL(blob);
+  const blob=new Blob([bytes],{type:mime});state.url=URL.createObjectURL(blob);state.lastBlob=blob;state.lastFilename=name;state.lastMime=mime;
   const res=$('#result');res.hidden=false;
   res.innerHTML='<p><b>'+esc(name)+'</b> siap disimpan ('+(bytes.length/1024).toFixed(0)+' KB).</p>'
-    +'<div class="btnrow"><a class="btn primary" href="'+state.url+'" download="'+esc(name)+'">Simpan file</a><button class="btn" type="button" id="share" hidden>Bagikan</button></div>'
+    +'<div class="btnrow"><a class="btn primary" href="'+state.url+'" download="'+esc(name)+'" onclick="if(window.saveBlobViaCapacitor){window.saveBlobViaCapacitor(state.lastBlob,state.lastFilename,state.lastMime);return false;}">Simpan file</a><button class="btn" type="button" id="share" hidden>Bagikan</button></div>'
     +'<p class="small">Kalau Simpan file tidak merespons di jendela pratinjau, buka file .html ini langsung di Chrome lalu ulangi.</p>';
   try{
     const file=new File([blob],name,{type:mime});
@@ -1868,7 +1972,7 @@ async function doExport(kind){
     const a = mk('a', { class: 'btn', id: 'dl', href: lastURL, download: fname, text: 'Simpan ' + fname });
     res.append(a, mk('p', { text: (blob.size / 1048576).toFixed(2) + ' MB. ' + changes.length + ' OPP diubah. Kecil ' + f[0] + ' MHz, besar ' + f[1] + ' MHz, bus ' + f[2] + ' MHz. Kalau unduhan tidak mulai sendiri, ketuk tombol di atas.' }));
     extra.forEach(x => res.append(mk('p', { text: x })));
-    a.click(); setStatus(kind === 'zip' ? 'Zip baru siap.' : 'Image baru siap.');
+    if ((window.Capacitor || window.AndroidBridge) && window.saveBlobViaCapacitor) { window.saveBlobViaCapacitor(blob, fname, 'application/zip'); } else { a.click(); } setStatus(kind === 'zip' ? 'Zip baru siap.' : 'Image baru siap.');
   } catch (e) { setStatus(e.message || String(e), true); }
   btn.textContent = oldTxt; btn.disabled = false; refresh(false);
 }
@@ -2125,7 +2229,7 @@ $('save').addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = fileName.replace(/\.ko$/i, '') + '_mod.ko';
-  document.body.appendChild(a); a.click(); a.remove();
+  if ((window.Capacitor || window.AndroidBridge) && window.saveBlobViaCapacitor) { window.saveBlobViaCapacitor(blob, fileName.replace(/\.ko$/i, '') + '_mod.ko', 'application/octet-stream'); } else { document.body.appendChild(a); a.click(); a.remove(); }
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   $('note').textContent = `Tersimpan sebagai ${a.download}.`;
 });
@@ -2393,8 +2497,12 @@ function applyLang() {
 
 function download() {
   if (!lastBlob) return;
-  const a = document.createElement('a'); a.href = URL.createObjectURL(lastBlob); a.download = lastName;
-  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  if ((window.Capacitor || window.AndroidBridge) && window.saveBlobViaCapacitor) {
+    window.saveBlobViaCapacitor(lastBlob, lastName, 'application/zip');
+  } else {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(lastBlob); a.download = lastName;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
 }
 
 async function build() {

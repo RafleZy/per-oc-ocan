@@ -1,0 +1,22 @@
+{
+  "name": "oc-editor",
+  "version": "1.0.0",
+  "description": "OC Editor MT6789 & GPU - Android Capacitor Application",
+  "main": "index.html",
+  "scripts": {
+    "prepare-www": "mkdir -p www && cp index.html www/",
+    "build": "npm run prepare-www",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/filesystem": "^6.0.1",
+    "@capacitor/share": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

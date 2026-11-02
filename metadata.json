@@ -1,0 +1,6 @@
+{
+  "name": "OC Editor",
+  "description": "MT6789 and GPU Overclock Editor for CPU, MHz & Bus, GPU OPP, and Flashable Zip creation",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
